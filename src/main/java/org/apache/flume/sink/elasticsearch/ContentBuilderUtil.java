@@ -21,6 +21,7 @@ package org.apache.flume.sink.elasticsearch;
 import java.io.IOException;
 import java.nio.charset.Charset;
 
+import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
@@ -54,7 +55,7 @@ public class ContentBuilderUtil {
   public static void addComplexField(XContentBuilder builder, String fieldName,
       XContentType contentType, byte[] data) throws IOException {
     XContentParser parser =
-      XContentFactory.xContent(contentType).createParser(data);
+      XContentFactory.xContent(contentType).createParser(NamedXContentRegistry.EMPTY, data);
     parser.nextToken();
     // Add the field name, but not the value.
     builder.field(fieldName);

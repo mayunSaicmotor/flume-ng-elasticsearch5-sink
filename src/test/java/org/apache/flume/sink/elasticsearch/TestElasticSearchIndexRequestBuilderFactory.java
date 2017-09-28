@@ -34,12 +34,13 @@ import org.apache.flume.conf.sink.SinkConfiguration;
 import org.apache.flume.event.SimpleEvent;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.io.BytesStream;
+import org.elasticsearch.common.io.stream.BytesStreamOutput;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
 import org.junit.Before;
 import org.junit.Test;
 
 import com.google.common.collect.Maps;
-import org.elasticsearch.common.io.stream.BytesStreamOutput;
 
 public class TestElasticSearchIndexRequestBuilderFactory
     extends AbstractElasticSearchSinkTest {
@@ -195,10 +196,11 @@ public class TestElasticSearchIndexRequestBuilderFactory
     boolean configuredWithContext, configuredWithComponentConfiguration;
 
     @Override
-    public BytesStream getContentBuilder(Event event) throws IOException {
+    public XContentBuilder getContentBuilder(Event event) throws IOException {
       BytesStreamOutput fbaos = new BytesStreamOutput(4);
       fbaos.write(FAKE_BYTES);
-      return fbaos;
+      XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
+      return builder;
     }
 
     @Override

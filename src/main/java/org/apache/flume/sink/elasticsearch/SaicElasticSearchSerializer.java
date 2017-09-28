@@ -37,9 +37,9 @@ import org.slf4j.LoggerFactory;
  * A best effort will be used to determine the content-type, if it cannot be
  * determined fields will be indexed as Strings
  */
-public class ElasticSearchDynamicSerializer implements
+public class SaicElasticSearchSerializer implements
     ElasticSearchEventSerializer {
-	private static final Logger logger = LoggerFactory.getLogger(ElasticSearchDynamicSerializer.class);
+	private static final Logger logger = LoggerFactory.getLogger(SaicElasticSearchSerializer.class);
   @Override
   public void configure(Context context) {
     // NO-OP...ByteToMessageDecoder

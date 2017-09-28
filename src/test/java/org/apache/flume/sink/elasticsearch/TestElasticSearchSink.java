@@ -27,17 +27,17 @@ import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.SER
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.TTL;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.time.FastDateFormat;
 
+import org.apache.commons.lang.time.FastDateFormat;
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -49,8 +49,10 @@ import org.apache.flume.conf.Configurables;
 import org.apache.flume.event.EventBuilder;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Requests;
-import org.elasticsearch.common.io.BytesStream;
+import org.elasticsearch.common.io.stream.BytesStream;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.junit.After;
 import org.junit.Before;
@@ -427,10 +429,11 @@ class FakeEventSerializer implements ElasticSearchEventSerializer {
   boolean configuredWithContext, configuredWithComponentConfiguration;
 
   @Override
-  public BytesStream getContentBuilder(Event event) throws IOException {
+  public XContentBuilder getContentBuilder(Event event) throws IOException {
     BytesStreamOutput fbaos = new BytesStreamOutput(4);
     fbaos.write(FAKE_BYTES);
-    return fbaos;
+    XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
+    return builder;
   }
 
   @Override

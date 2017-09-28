@@ -246,6 +246,7 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
 
     if (StringUtils.isNotBlank(context.getString(INDEX_NAME))) {
       this.indexName = context.getString(INDEX_NAME);
+      logger.info("indexName: " + indexName);
     }
 
     if (StringUtils.isNotBlank(context.getString(INDEX_TYPE))) {

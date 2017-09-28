@@ -18,26 +18,26 @@
  */
 package org.apache.flume.sink.elasticsearch.client;
 
-import com.google.common.base.Splitter;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import org.apache.flume.Event;
-import org.apache.flume.EventDeliveryException;
-import org.apache.flume.sink.elasticsearch.ElasticSearchEventSerializer;
-import org.apache.flume.sink.elasticsearch.IndexNameBuilder;
-import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.io.BytesStream;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
+import static junit.framework.Assert.assertEquals;
+import static junit.framework.Assert.assertTrue;
+import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.isA;
+//import org.elasticsearch.common.bytes.BytesArray;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.MockitoAnnotations.initMocks;
 
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
 
-import static junit.framework.Assert.assertEquals;
-import static junit.framework.Assert.assertTrue;
+import org.apache.flume.Event;
+import org.apache.flume.EventDeliveryException;
+import org.apache.flume.sink.elasticsearch.ElasticSearchEventSerializer;
+import org.apache.flume.sink.elasticsearch.IndexNameBuilder;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
@@ -46,9 +46,17 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.util.EntityUtils;
-//import org.elasticsearch.common.bytes.BytesArray;
-import static org.mockito.Mockito.*;
-import static org.mockito.MockitoAnnotations.initMocks;
+import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.io.stream.BytesStream;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.junit.Before;
+import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+
+import com.google.common.base.Splitter;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class TestElasticSearchRestClient {
 
@@ -88,7 +96,8 @@ public class TestElasticSearchRestClient {
     when(nameBuilder.getIndexName(any(Event.class))).thenReturn(INDEX_NAME);
     //when(bytesReference.toBytesArray()).thenReturn(new BytesArray(MESSAGE_CONTENT));
     when(bytesStream.bytes()).thenReturn(bytesReference);
-    when(serializer.getContentBuilder(any(Event.class))).thenReturn(bytesStream);
+    XContentBuilder builder = jsonBuilder().startObject();
+    when(serializer.getContentBuilder(any(Event.class))).thenReturn(builder);
     fixture = new ElasticSearchRestClient(HOSTS, serializer, httpClient);
   }
 
