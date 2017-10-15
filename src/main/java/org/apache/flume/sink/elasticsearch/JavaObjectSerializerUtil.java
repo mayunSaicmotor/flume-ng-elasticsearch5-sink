@@ -8,18 +8,19 @@ import java.io.ObjectOutputStream;
 
 import org.apache.log4j.Logger;
 
+import com.saic.kafka.common.GenericMessage;
 import com.saic.util.gson.Obj2Json;
 
-public class ObjectSerializerUtil {
+public class JavaObjectSerializerUtil {
 
-	private final static Logger logger = Logger.getLogger(ObjectSerializerUtil.class);
+	private final static Logger logger = Logger.getLogger(JavaObjectSerializerUtil.class);
 
-	public static byte[] javaSerialize(Object msg) {
+	public static byte[] javaSerialize(Object data) {
 		ByteArrayOutputStream bo = new ByteArrayOutputStream();
 		ObjectOutputStream oos = null;
 		try {
 			oos = new ObjectOutputStream(bo);
-			oos.writeObject(msg);
+			oos.writeObject(data);
 			oos.flush();
 			oos.close();
 			bo.close();
@@ -39,12 +40,12 @@ public class ObjectSerializerUtil {
 		return null;
 	}
 
-	public static Object deJavaSerialize(byte[] data) {
+	public static Object deSerialize(byte[] data) {
 		Object obj = null;
 		try {
 			ByteArrayInputStream bis = new ByteArrayInputStream(data);
 			ObjectInputStream ois = new ObjectInputStream(bis);
-			obj = (ObjectSerializerUtil) ois.readObject();
+			obj = ois.readObject();
 			ois.close();
 			bis.close();
 		} catch (IOException ex) {

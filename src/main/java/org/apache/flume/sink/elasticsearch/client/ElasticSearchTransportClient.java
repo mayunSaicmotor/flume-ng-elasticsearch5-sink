@@ -23,6 +23,7 @@ import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.DEF
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +35,7 @@ import org.apache.flume.EventDeliveryException;
 import org.apache.flume.sink.elasticsearch.ElasticSearchEventSerializer;
 import org.apache.flume.sink.elasticsearch.ElasticSearchIndexRequestBuilderFactory;
 import org.apache.flume.sink.elasticsearch.IndexNameBuilder;
-import org.apache.flume.sink.elasticsearch.ObjectSerializerUtil;
+import org.apache.flume.sink.elasticsearch.JavaObjectSerializerUtil;
 import org.elasticsearch.action.bulk.BulkRequestBuilder;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequestBuilder;
@@ -48,6 +49,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.mysql.jdbc.util.Base64Decoder;
 import com.saic.data.entity.IEntity;
 import com.saic.util.GZipUtils;
 import com.saic.util.PropertiesUtil;
@@ -194,63 +196,78 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 		return indexRequestBuilder;
 	}
 
-	private void buildBulkRequestsFromBody(Event event, IndexNameBuilder indexNameBuilder)
-			throws IOException {
+	private void buildBulkRequestsFromBody(Event event, IndexNameBuilder indexNameBuilder) throws IOException {
 		logger.info("buildBulkRequestsFromBody start");
 		if (bulkRequestBuilder == null) {
 			bulkRequestBuilder = client.prepareBulk();
 		}
+		//logger.info("event.getBody(): " + new String(event.getBody()));
+		logger.info("charset: " + Charset.defaultCharset());
+		logger.info("event.getBody() class: " + event.getBody().getClass().getName());
+		byte[] compressedBody = event.getBody();
+		byte[] base46decodedCompressedBody = Base64Decoder.decode(compressedBody, 0, compressedBody.length);
+		logger.info("base46decodedCompressedBody length: " + base46decodedCompressedBody.length);
+		byte[] uncompressedBody = GZipUtils.uncompress(Base64Decoder.decode(compressedBody, 0, compressedBody.length));
+		logger.info("uncompressedBody length: " + uncompressedBody.length);
+		Object body = JavaObjectSerializerUtil.deSerialize(uncompressedBody);
+		if (body != null) {
+			if (body instanceof List) {
+				for (Object obj : (List) body) {
+					addEntityData(obj);
 
-		Object body = ObjectSerializerUtil.deJavaSerialize(GZipUtils.uncompress(event.getBody()));
-		if (body != null && body instanceof List) {
-			for (Object obj : (List) body) {
-				if (obj instanceof IEntity) {
-					IEntity entity = (IEntity) obj;
-					switch (entity.getOperation()) {
-					case INSERT:
-						String insertDoc = null;
-						try {
-							insertDoc = Obj2Json.getJSONStr(entity.getDataMap());
-						} catch (IOException e) {
-							logger.error("object to json error: " + entity.getDataMap());
-						}
-						if (insertDoc != null) {
-							bulkRequestBuilder.add(client.prepareIndex(PropertiesUtil.getProperty("INDEX_SAIC_CRAWLER"),
-									entity.getTablename(), (String) ((Map) entity.getKeyMap().get("index")).get("_id"))
-									.setSource(insertDoc));
-						}
-						break;
-					case UPDATE:
-						String updateDoc = null;
-						try {
-							updateDoc = Obj2Json.getJSONStr(entity.getDataMap().get("doc"));
-						} catch (IOException e) {
-							logger.error("object to json error: " + entity.getDataMap());
-						}
-						if (updateDoc != null) {
-							bulkRequestBuilder.add(client
-									.prepareUpdate(PropertiesUtil.getProperty("INDEX_SAIC_CRAWLER"),
-											entity.getTablename(),
-											(String) ((Map) entity.getKeyMap().get("update")).get("_id"))
-									.setDoc(updateDoc));
-						}
-						break;
-					default:
-						logger.error("Unsupported entity operation: " + entity.getOperation());
-						break;
-					}
-				}else{
-					logger.error("obj is not a IEntity");
 				}
-
+			} else {
+				addEntityData(body);
 			}
 		} else {
-			logger.error("body is not a list");
+			logger.error("body is null");
 		}
 		logger.info("buildBulkRequestsFromBody end");
-//		IndexRequestBuilder indexRequestBuilder;
-//		indexRequestBuilder = client.prepareIndex(indexNameBuilder.getIndexName(event), indexType)
-//				.setSource(serializer.getContentBuilder(event).bytes());
+		// IndexRequestBuilder indexRequestBuilder;
+		// indexRequestBuilder =
+		// client.prepareIndex(indexNameBuilder.getIndexName(event), indexType)
+		// .setSource(serializer.getContentBuilder(event).bytes());
+	}
+
+	private void addEntityData(Object obj) {
+		if (obj instanceof IEntity) {
+			IEntity entity = (IEntity) obj;
+			switch (entity.getOperation()) {
+			case INSERT:
+				String insertDoc = null;
+				try {
+					insertDoc = Obj2Json.getJSONStr(entity.getDataMap());
+				} catch (IOException e) {
+					logger.error("object to json error: " + entity.getDataMap());
+				}
+				if (insertDoc != null) {
+					bulkRequestBuilder.add(client.prepareIndex((String) entity.getKeyMap().get("_index"),
+							entity.getTablename(), (String) ((Map) entity.getKeyMap().get("index")).get("_id"))
+							.setSource(insertDoc));
+				}
+				break;
+			case UPDATE:
+				String updateDoc = null;
+				try {
+					updateDoc = Obj2Json.getJSONStr(entity.getDataMap().get("doc"));
+				} catch (IOException e) {
+					logger.error("object to json error: " + entity.getDataMap());
+				}
+				if (updateDoc != null) {
+					bulkRequestBuilder.add(client
+							.prepareUpdate((String) entity.getKeyMap().get("_index"),
+									entity.getTablename(),
+									(String) ((Map) entity.getKeyMap().get("update")).get("_id"))
+							.setDoc(updateDoc));
+				}
+				break;
+			default:
+				logger.error("Unsupported entity operation: " + entity.getOperation());
+				break;
+			}
+		} else {
+			logger.error("obj is not a IEntity");
+		}
 	}
 
     @Override

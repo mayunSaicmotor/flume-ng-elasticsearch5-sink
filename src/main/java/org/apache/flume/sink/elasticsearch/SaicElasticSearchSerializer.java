@@ -21,6 +21,7 @@ package org.apache.flume.sink.elasticsearch;
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Map;
 
 import org.apache.flume.Context;
@@ -73,5 +74,12 @@ public class SaicElasticSearchSerializer implements
           headers.get(key).getBytes(charset));
     }
   }
+  
+  public static void main(String args[])  
+  {  
+      String defaultCharsetName=Charset.defaultCharset().displayName();   
+      System.out.println("defaultCharsetName:"+defaultCharsetName);  
+        
+  }  
 
 }
