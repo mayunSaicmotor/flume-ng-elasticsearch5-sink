@@ -237,28 +237,38 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 				String insertDoc = null;
 				try {
 					insertDoc = Obj2Json.getJSONStr(entity.getDataMap());
+					// logger.info("insertDoc: "+insertDoc);
 				} catch (IOException e) {
 					logger.error("object to json error: " + entity.getDataMap());
 				}
 				if (insertDoc != null) {
-					bulkRequestBuilder.add(client.prepareIndex((String) entity.getKeyMap().get("_index"),
-							entity.getTablename(), (String) ((Map) entity.getKeyMap().get("index")).get("_id"))
-							.setSource(insertDoc));
+					String index = (String) ((Map) entity.getKeyMap().get("index")).get("_index");
+					String type =  (String) ((Map) entity.getKeyMap().get("index")).get("_type");
+					String id = (String) ((Map) entity.getKeyMap().get("index")).get("_id");
+					logger.info("inserted data's index: " + index);
+					logger.info("inserted data's type: " + type);
+					logger.info("inserted data's id: " + id);
+
+					bulkRequestBuilder.add(client.prepareIndex(index, type, id).setSource(insertDoc));
 				}
 				break;
 			case UPDATE:
 				String updateDoc = null;
 				try {
 					updateDoc = Obj2Json.getJSONStr(entity.getDataMap().get("doc"));
+					//logger.info("updateDoc: "+updateDoc);
 				} catch (IOException e) {
 					logger.error("object to json error: " + entity.getDataMap());
 				}
 				if (updateDoc != null) {
-					bulkRequestBuilder.add(client
-							.prepareUpdate((String) entity.getKeyMap().get("_index"),
-									entity.getTablename(),
-									(String) ((Map) entity.getKeyMap().get("update")).get("_id"))
-							.setDoc(updateDoc));
+					String index = (String) ((Map) entity.getKeyMap().get("update")).get("_index");
+					String type = (String) ((Map) entity.getKeyMap().get("update")).get("_type");
+					String id = (String) ((Map) entity.getKeyMap().get("update")).get("_id");
+					logger.info("updated data's index: " + index);
+					logger.info("updated data's type: " + type);
+					logger.info("updated data's id: " + id);
+
+					bulkRequestBuilder.add(client.prepareUpdate(index, type, id).setDoc(updateDoc));
 				}
 				break;
 			default:
@@ -275,7 +285,13 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
         try {
             BulkResponse bulkResponse = bulkRequestBuilder.execute().actionGet();
             if (bulkResponse.hasFailures()) {
-                throw new EventDeliveryException(bulkResponse.buildFailureMessage());
+            	String exceptionStr = bulkResponse.buildFailureMessage();
+                if(!exceptionStr.contains("DocumentMissingException")){
+                    throw new EventDeliveryException(bulkResponse.buildFailureMessage());
+                }else{
+                	logger.warn("ignore this error: " + exceptionStr);
+                }
+
             }
         } finally {
             bulkRequestBuilder = client.prepareBulk();
