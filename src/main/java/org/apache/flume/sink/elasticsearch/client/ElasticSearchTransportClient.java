@@ -45,14 +45,16 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
 //import org.elasticsearch.node.NodeBuilder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
+import org.saicmotor.datalake.crypto.CipherUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.mysql.jdbc.util.Base64Decoder;
 import com.saic.data.entity.IEntity;
+import com.saic.data.type.FlumeDataType;
+import com.saic.util.DataCountUtil;
 import com.saic.util.GZipUtils;
-import com.saic.util.PropertiesUtil;
 import com.saic.util.gson.Obj2Json;
 
 public class ElasticSearchTransportClient implements ElasticSearchClient {
@@ -66,6 +68,15 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
     private BulkRequestBuilder bulkRequestBuilder;
 
     private Client client;
+
+	static {
+		byte[] keys = new byte[32768];
+		for (int i = 0; i < keys.length; i++) {
+			keys[i] = (byte) (i & 0xff);
+		}
+		logger.info("CipherUtil initWithKeys");
+		CipherUtil.initWithKeys(keys);
+	}
 
     @VisibleForTesting
     InetSocketTransportAddress[] getServerAddresses() {
@@ -185,7 +196,11 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 //			indexRequestBuilder.setTTL(ttlMs);
 //		}
 //		bulkRequestBuilder.add(indexRequestBuilder);
-		buildBulkRequestsFromBody(event, indexNameBuilder);
+		try {
+			buildBulkRequestsFromBody(event, indexNameBuilder);
+		} catch (Exception e) {
+			logger.error("buildBulkRequestsFromBody error: ", e);
+		}
 	}
 
 	private IndexRequestBuilder generateBulkRequests(Event event, IndexNameBuilder indexNameBuilder, String indexType)
@@ -203,25 +218,39 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 		}
 		//logger.info("event.getBody(): " + new String(event.getBody()));
 		logger.info("charset: " + Charset.defaultCharset());
-		logger.info("event.getBody() class: " + event.getBody().getClass().getName());
-		byte[] compressedBody = event.getBody();
-		byte[] base46decodedCompressedBody = Base64Decoder.decode(compressedBody, 0, compressedBody.length);
-		logger.info("base46decodedCompressedBody length: " + base46decodedCompressedBody.length);
-		byte[] uncompressedBody = GZipUtils.uncompress(Base64Decoder.decode(compressedBody, 0, compressedBody.length));
+		
+		byte[] body = event.getBody();
+		Map<String, String> headers = event.getHeaders();
+		logger.info("event.getHeaders(): " + event.getHeaders());
+		
+		byte[] base46DecodedBody = Base64Decoder.decode(body, 0, body.length);
+		logger.info("base46decodedCompressedBody length: " + base46DecodedBody.length);
+		
+		byte[] uncompressedBody = CipherUtil.decrypt(GZipUtils.uncompress(base46DecodedBody));
 		logger.info("uncompressedBody length: " + uncompressedBody.length);
-		Object body = JavaObjectSerializerUtil.deSerialize(uncompressedBody);
-		if (body != null) {
-			if (body instanceof List) {
-				for (Object obj : (List) body) {
-					addEntityData(obj);
-
+		
+		Object data = null;
+		if (FlumeDataType.OBJECT_LIST.name().equals(headers.get("type"))) {
+			data = JavaObjectSerializerUtil.deSerialize(uncompressedBody);
+		} else if (FlumeDataType.JSON_ARRAY.name().equals(headers.get("type"))) {
+			data = Obj2Json.getObject(uncompressedBody, Object.class);
+		}else{
+			
+		}
+		if (data != null) {
+			if (data instanceof List) {
+				DataCountUtil.addDataKeyCount("flumeData", "", ((List) data).size());
+				for (Object obj : (List) data) {
+					addEntityData(obj, headers);
 				}
 			} else {
-				addEntityData(body);
+				logger.error("body type is wrong");
 			}
 		} else {
 			logger.error("body is null");
 		}
+		
+		
 		logger.info("buildBulkRequestsFromBody end");
 		// IndexRequestBuilder indexRequestBuilder;
 		// indexRequestBuilder =
@@ -229,54 +258,79 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 		// .setSource(serializer.getContentBuilder(event).bytes());
 	}
 
-	private void addEntityData(Object obj) {
+	private void addEntityData(Object obj, Map<String, String> headers) {
+		Map keyMap = null;
+		Map dataMap = null;
+
 		if (obj instanceof IEntity) {
 			IEntity entity = (IEntity) obj;
 			switch (entity.getOperation()) {
 			case INSERT:
-				String insertDoc = null;
-				try {
-					insertDoc = Obj2Json.getJSONStr(entity.getDataMap());
-					// logger.info("insertDoc: "+insertDoc);
-				} catch (IOException e) {
-					logger.error("object to json error: " + entity.getDataMap());
-				}
-				if (insertDoc != null) {
-					String index = (String) ((Map) entity.getKeyMap().get("index")).get("_index");
-					String type =  (String) ((Map) entity.getKeyMap().get("index")).get("_type");
-					String id = (String) ((Map) entity.getKeyMap().get("index")).get("_id");
-					logger.info("inserted data's index: " + index);
-					logger.info("inserted data's type: " + type);
-					logger.info("inserted data's id: " + id);
-
-					bulkRequestBuilder.add(client.prepareIndex(index, type, id).setSource(insertDoc));
-				}
+				keyMap = (Map) entity.getKeyMap().get("index");
+				dataMap = (Map) entity.getDataMap();
+				addInsertData(keyMap, dataMap);
 				break;
 			case UPDATE:
-				String updateDoc = null;
-				try {
-					updateDoc = Obj2Json.getJSONStr(entity.getDataMap().get("doc"));
-					//logger.info("updateDoc: "+updateDoc);
-				} catch (IOException e) {
-					logger.error("object to json error: " + entity.getDataMap());
-				}
-				if (updateDoc != null) {
-					String index = (String) ((Map) entity.getKeyMap().get("update")).get("_index");
-					String type = (String) ((Map) entity.getKeyMap().get("update")).get("_type");
-					String id = (String) ((Map) entity.getKeyMap().get("update")).get("_id");
-					logger.info("updated data's index: " + index);
-					logger.info("updated data's type: " + type);
-					logger.info("updated data's id: " + id);
-
-					bulkRequestBuilder.add(client.prepareUpdate(index, type, id).setDoc(updateDoc));
-				}
+				keyMap = (Map) entity.getKeyMap().get("update");
+				dataMap = (Map) entity.getDataMap().get("doc");
+				addUpdateData(keyMap, dataMap);
 				break;
 			default:
 				logger.error("Unsupported entity operation: " + entity.getOperation());
 				break;
 			}
+		} else if (obj instanceof Map) {
+			keyMap = (Map) ((Map) ((Map) obj).get("key")).get("index");
+			if (keyMap != null) {
+				dataMap = (Map) ((Map) obj).get("data");
+				addInsertData(keyMap, dataMap);
+			} else {
+				keyMap = (Map) ((Map) ((Map) obj).get("key")).get("update");
+				dataMap = (Map) ((Map) ((Map) obj).get("data")).get("doc");
+				addUpdateData(keyMap, dataMap);
+			}
 		} else {
 			logger.error("obj is not a IEntity");
+		}
+	}
+
+	private void addUpdateData(Map keyMap, Map dataMap) {
+		String updateDoc = null;
+		try {
+			updateDoc = Obj2Json.getJSONStr(dataMap);
+			// logger.info("updateDoc: "+updateDoc);
+		} catch (IOException e) {
+			logger.error("object to json error: " + dataMap);
+		}
+		if (updateDoc != null) {
+			String index = (String) keyMap.get("_index");
+			String type = (String) keyMap.get("_type");
+			String id = (String) keyMap.get("_id");
+			logger.info("updated data's index: " + index);
+			logger.info("updated data's type: " + type);
+			logger.info("updated data's id: " + id);
+
+			bulkRequestBuilder.add(client.prepareUpdate(index, type, id).setDoc(updateDoc));
+		}
+	}
+
+	private void addInsertData(Map keyMap, Map dataMap) {
+		String insertDoc = null;
+		try {
+			insertDoc = Obj2Json.getJSONStr(dataMap);
+			// logger.info("insertDoc: "+insertDoc);
+		} catch (IOException e) {
+			logger.error("object to json error: " + dataMap);
+		}
+		if (insertDoc != null) {
+			String index = (String) keyMap.get("_index");
+			String type = (String) keyMap.get("_type");
+			String id = (String) keyMap.get("_id");
+			logger.info("inserted data's index: " + index);
+			logger.info("inserted data's type: " + type);
+			logger.info("inserted data's id: " + id);
+
+			bulkRequestBuilder.add(client.prepareIndex(index, type, id).setSource(insertDoc));
 		}
 	}
 
@@ -338,4 +392,5 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
     public void configure(Context context) {
         //To change body of implemented methods use File | Settings | File Templates.
     }
+    
 }
