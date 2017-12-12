@@ -52,6 +52,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.mysql.jdbc.util.Base64Decoder;
 import com.saic.data.entity.IEntity;
+import com.saic.data.type.DateType;
 import com.saic.data.type.FlumeDataType;
 import com.saic.util.DataCountUtil;
 import com.saic.util.GZipUtils;
@@ -239,7 +240,7 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 		}
 		if (data != null) {
 			if (data instanceof List) {
-				DataCountUtil.addDataKeyCount("flumeData", "", ((List) data).size());
+				DataCountUtil.addDataKeyCount("flumeData", DateType.DAY, ((List) data).size());
 				for (Object obj : (List) data) {
 					addEntityData(obj, headers);
 				}
@@ -309,7 +310,7 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 			logger.info("updated data's index: " + index);
 			logger.info("updated data's type: " + type);
 			logger.info("updated data's id: " + id);
-
+			logger.info("update data: "+dataMap);
 			bulkRequestBuilder.add(client.prepareUpdate(index, type, id).setDoc(updateDoc));
 		}
 	}
@@ -329,7 +330,7 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
 			logger.info("inserted data's index: " + index);
 			logger.info("inserted data's type: " + type);
 			logger.info("inserted data's id: " + id);
-
+			logger.info("insert data: "+ dataMap);
 			bulkRequestBuilder.add(client.prepareIndex(index, type, id).setSource(insertDoc));
 		}
 	}
@@ -347,6 +348,10 @@ public class ElasticSearchTransportClient implements ElasticSearchClient {
                 }
 
             }
+        }catch (Exception e)  {
+        	
+        	logger.error("write es error: ", e);
+        	
         } finally {
             bulkRequestBuilder = client.prepareBulk();
         }
